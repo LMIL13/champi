@@ -1,5 +1,5 @@
 // Service worker : appli disponible hors réseau + cache des fonds de carte et photos déjà vus.
-const APP = 'cueillette-app-v1', TILES = 'cueillette-tuiles-v1', MAX_TILES = 3000;
+const APP = 'cueillette-app-v2', TILES = 'cueillette-tuiles-v1', MAX_TILES = 3000;
 const LOCAL = ['./', 'index.html', 'app.js', 'especes.js', 'lieux.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'leaflet/leaflet.js', 'leaflet/leaflet.css', 'leaflet/images/layers.png', 'leaflet/images/layers-2x.png'];
 const CDN = [];
 

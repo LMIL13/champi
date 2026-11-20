@@ -53,9 +53,10 @@ let savedView = null; try { savedView = JSON.parse(localStorage.getItem('vue'));
 const map = L.map('map', {zoomControl:false, attributionControl:true}).setView(savedView?.c || [43.53, 5.45], savedView?.z || 10);
 let baseName = 'Plan IGN'; try { baseName = localStorage.getItem('fond') || baseName; } catch (e) {}
 (baseLayers[baseName] || baseLayers['Plan IGN']).addTo(map);
+const isPhoto = () => map.hasLayer(baseLayers['Photos aériennes IGN']);
 const gLieux = L.layerGroup().addTo(map), gTraces = L.layerGroup().addTo(map), gZones = L.layerGroup().addTo(map), gPoints = L.layerGroup().addTo(map), gLive = L.layerGroup().addTo(map);
 L.control.layers(baseLayers, {'Mes trouvailles & signets':gPoints, 'Zones « rien trouvé »':gZones, 'Mes traces':gTraces, 'Secteurs proposés':gLieux}, {position:'topright'}).addTo(map);
-map.on('baselayerchange', e => { try { localStorage.setItem('fond', e.name); } catch (x) {} });
+map.on('baselayerchange', e => { try { localStorage.setItem('fond', e.name); } catch (x) {} setTimeout(() => { drawLieux(); drawZones(); drawTraces(); }, 0); });
 map.on('moveend', () => { try { localStorage.setItem('vue', JSON.stringify({c:[map.getCenter().lat, map.getCenter().lng], z:map.getZoom()})); } catch (e) {} });
 
 const GLYPH = {
@@ -65,10 +66,15 @@ const GLYPH = {
 const COL = { trouve:'#e0842a', signet:'#1f73e8' };
 const icon = type => L.divIcon({className:'', html:`<div class="mk" style="background:${COL[type]}">${GLYPH[type]}</div>`, iconSize:[30,30], iconAnchor:[15,30], popupAnchor:[0,-28]});
 
+function halo(layer, group) { // trait blanc sous la forme pour la détacher de la photo
+  const o = layer.options, h = layer instanceof L.Circle ? L.circle(layer.getLatLng(), {radius:layer.getRadius()}) : layer instanceof L.Polygon ? L.polygon(layer.getLatLngs()) : L.polyline(layer.getLatLngs());
+  h.setStyle({color:'#fff', weight:(o.weight || 3) + 4, opacity:.85, fill:false, interactive:false, dashArray:null}); h.addTo(group); layer.addTo(group); return layer;
+}
 function drawLieux() {
   gLieux.clearLayers();
-  for (const l of LIEUX) L.circle([l.lat, l.lng], {radius:l.rayon, color:'#7a5a2e', weight:1.5, fillColor:'#c9a35a', fillOpacity:.15, dashArray:'6 6'})
-    .bindPopup(`<div class="pop"><h3>${esc(l.nom)}</h3><div class="meta">${esc(l.commune)}</div><p>${esc(l.milieu)}</p><p><b>À chercher :</b> ${esc(l.especes.join(', '))}</p><p class="meta">Secteur indicatif, position approximative.</p></div>`).addTo(gLieux);
+  const ph = isPhoto();
+  for (const l of LIEUX) halo(L.circle([l.lat, l.lng], {radius:l.rayon, color:ph ? '#ffd400' : '#8a5a12', weight:3, fillColor:ph ? '#ffd400' : '#e0a030', fillOpacity:ph ? .18 : .14, dashArray:'10 6'})
+    .bindPopup(`<div class="pop"><h3>${esc(l.nom)}</h3><div class="meta">${esc(l.commune)}</div><p>${esc(l.milieu)}</p><p><b>À chercher :</b> ${esc(l.especes.join(', '))}</p><p class="meta">Secteur indicatif, position approximative.</p></div>`), gLieux);
 }
 function popPoint(p) {
   const ph = (p.photos || []).map(id => `<img data-ph="${id}" alt="">`).join('');
@@ -79,14 +85,14 @@ function popPoint(p) {
 }
 function drawPoints() { gPoints.clearLayers(); for (const p of S.points) L.marker([p.lat, p.lng], {icon:icon(p.type)}).bindPopup(() => popPoint(p), {maxWidth:280}).addTo(gPoints); }
 function zoneLayer(z) {
-  const st = {color:'#555', weight:2, dashArray:'4 6', fillColor:'#777', fillOpacity:.22};
+  const ph = isPhoto(), st = {color:ph ? '#ff2d55' : '#4a4a4a', weight:3, dashArray:'6 5', fillColor:ph ? '#ff2d55' : '#6b6b6b', fillOpacity:ph ? .28 : .25};
   return z.kind === 'poly' ? L.polygon(z.latlngs, st) : L.circle(z.center, Object.assign({radius:z.radius}, st));
 }
-function drawZones() { gZones.clearLayers(); for (const z of S.zones) zoneLayer(z).bindPopup(`<div class="pop"><h3>Rien trouvé</h3><div class="meta">${fmtD(z.date)} à ${fmtH(z.date)}</div>${z.cherche ? `<p>Cherché : ${esc(z.cherche)}</p>` : ''}${z.note ? `<p>${esc(z.note)}</p>` : ''}<div class="act"><button class="btn sm warn" data-act="delz" data-id="${z.id}">Supprimer</button></div></div>`).addTo(gZones); }
+function drawZones() { gZones.clearLayers(); for (const z of S.zones) halo(zoneLayer(z).bindPopup(`<div class="pop"><h3>Rien trouvé</h3><div class="meta">${fmtD(z.date)} à ${fmtH(z.date)}</div>${z.cherche ? `<p>Cherché : ${esc(z.cherche)}</p>` : ''}${z.note ? `<p>${esc(z.note)}</p>` : ''}<div class="act"><button class="btn sm warn" data-act="delz" data-id="${z.id}">Supprimer</button></div></div>`), gZones); }
 function drawTraces() {
   gTraces.clearLayers();
   for (const t of S.traces) { if (t.points.length < 2) continue;
-    L.polyline(t.points.map(p => [p[0], p[1]]), {color:'#6b3fa0', weight:4, opacity:.75}).bindPopup(`<div class="pop"><h3>Sortie du ${fmtD(t.start)}</h3><div class="meta">${fmtH(t.start)} – ${fmtH(t.end)} · ${fmtDur(t.end - t.start)} · ${fmtDist(t.dist || 0)}</div></div>`).addTo(gTraces); }
+    halo(L.polyline(t.points.map(p => [p[0], p[1]]), {color:isPhoto() ? '#b388ff' : '#6b3fa0', weight:4, opacity:.9}).bindPopup(`<div class="pop"><h3>Sortie du ${fmtD(t.start)}</h3><div class="meta">${fmtH(t.start)} – ${fmtH(t.end)} · ${fmtDur(t.end - t.start)} · ${fmtDist(t.dist || 0)}</div></div>`), gTraces); }
 }
 function drawAll() { drawPoints(); drawZones(); drawTraces(); }
 
@@ -358,23 +364,36 @@ function renderSaison() {
   $('#s-body').innerHTML = h; lazyImgs();
 }
 const imgMem = {};
+async function tryJSON(url) { try { const r = await fetch(url, {headers:{'Accept':'application/json'}}); return r.ok ? await r.json() : null; } catch (e) { return null; } }
 async function wikiImg(title) {
   if (imgMem[title] !== undefined) return imgMem[title];
-  try { const c = JSON.parse(localStorage.getItem('wi:' + title)); if (c) return imgMem[title] = c; } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem('wi2:' + title)); if (c) return imgMem[title] = c; } catch (e) {}
+  let v = null;
   for (const lang of ['fr', 'en']) {
-    try { const r = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`);
-      if (!r.ok) continue; const j = await r.json();
-      if (j.thumbnail?.source) { const v = {src:j.thumbnail.source.replace(/\/\d+px-/, '/480px-'), page:j.content_urls?.desktop?.page || ''}; try { localStorage.setItem('wi:' + title, JSON.stringify(v)); } catch (e) {} return imgMem[title] = v; }
-    } catch (e) {}
+    const j = await tryJSON(`https://${lang}.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=pageimages|info&inprop=url&piprop=thumbnail&pithumbsize=500&titles=${encodeURIComponent(title)}`);
+    const pg = j?.query?.pages && Object.values(j.query.pages)[0];
+    if (pg?.thumbnail?.source) { v = {src:pg.thumbnail.source, page:pg.fullurl || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(title)}`}; break; }
   }
-  return null;
+  if (!v) for (const lang of ['fr', 'en']) {
+    const j = await tryJSON(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`);
+    if (j?.thumbnail?.source) { v = {src:j.thumbnail.source, page:j.content_urls?.desktop?.page || ''}; break; }
+  }
+  if (v) { try { localStorage.setItem('wi2:' + title, JSON.stringify(v)); } catch (e) {} }
+  return imgMem[title] = v;
 }
 const io = 'IntersectionObserver' in window ? new IntersectionObserver(ents => { for (const en of ents) if (en.isIntersecting) { io.unobserve(en.target); fillImg(en.target); } }, {rootMargin:'300px'}) : null;
 async function fillImg(el) {
-  const v = await wikiImg(el.dataset.wiki);
-  if (!v) { el.innerHTML = '<span class="small muted" style="display:block;padding:10px">Photo disponible avec une connexion</span>'; return; }
-  el.innerHTML = `<img src="${v.src}" alt="${esc(el.dataset.wiki)}" loading="lazy" onerror="this.src='${v.src.replace(/\/480px-/, '/320px-')}'"><a href="${v.page}" target="_blank" rel="noopener">Photo : Wikipédia</a>`;
+  const t = el.dataset.wiki, link = `https://fr.wikipedia.org/wiki/${encodeURIComponent(t.replace(/ /g, '_'))}`;
+  const fail = msg => { el.innerHTML = `<a class="nophoto" href="${link}" target="_blank" rel="noopener">${msg}<br><b>Voir les photos sur Wikipédia</b></a>`; };
+  if (!navigator.onLine) { fail('Photo disponible avec une connexion.'); delete el.dataset.done; return; }
+  const v = await wikiImg(t);
+  if (!v) { fail('Photo introuvable.'); return; }
+  const img = new Image(); img.alt = t; img.referrerPolicy = 'no-referrer';
+  img.onload = () => { el.innerHTML = ''; el.appendChild(img); el.insertAdjacentHTML('beforeend', `<a href="${v.page || link}" target="_blank" rel="noopener">Photo : Wikipédia</a>`); };
+  img.onerror = () => { try { localStorage.removeItem('wi2:' + t); } catch (e) {} delete imgMem[t]; fail('La photo n’a pas pu se charger.'); };
+  img.src = v.src;
 }
+window.addEventListener('online', () => lazyImgs());
 function lazyImgs() { document.querySelectorAll('#s-body .img[data-wiki]:not([data-done])').forEach(el => { el.dataset.done = 1; io ? io.observe(el) : fillImg(el); }); }
 
 /* ---------- Infos, lieux, données ---------- */
