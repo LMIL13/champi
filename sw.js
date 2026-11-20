@@ -1,12 +1,12 @@
 // Service worker : appli disponible hors réseau + cache des fonds de carte et photos déjà vus.
-const APP = 'cueillette-app-v2', TILES = 'cueillette-tuiles-v1', MAX_TILES = 3000;
+const APP = 'cueillette-app-v3', TILES = 'cueillette-tuiles-v1', MAX_TILES = 3000;
 const LOCAL = ['./', 'index.html', 'app.js', 'especes.js', 'lieux.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'leaflet/leaflet.js', 'leaflet/leaflet.css', 'leaflet/images/layers.png', 'leaflet/images/layers-2x.png'];
 const CDN = [];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     const c = await caches.open(APP);
-    await c.addAll(LOCAL);
+    await c.addAll(LOCAL.map(u => new Request(u, {cache: 'reload'}))); // contourne le cache HTTP pour prendre la dernière version
     for (const u of CDN) { try { await c.add(new Request(u, {mode: 'cors'})); } catch (x) {} }
     self.skipWaiting();
   })());
@@ -44,10 +44,11 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (u.origin === location.origin || u.hostname.endsWith('googleapis.com') || u.hostname.endsWith('gstatic.com')) {
+    // réseau d'abord (dernière version), cache si hors connexion
     e.respondWith((async () => {
-      const c = await caches.open(APP), hit = await c.match(req, {ignoreSearch: u.origin === location.origin});
-      const net = fetch(req).then(r => { if (r.ok || r.type === 'opaque') c.put(req, r.clone()); return r; }).catch(() => hit);
-      return hit || net;
+      const c = await caches.open(APP);
+      try { const r = u.origin === location.origin ? await fetch(req.url, {cache: 'no-cache', credentials: 'same-origin'}) : await fetch(req); if (r.ok) c.put(req, r.clone()); return r; }
+      catch (x) { return (await c.match(req, {ignoreSearch: u.origin === location.origin})) || Response.error(); }
     })());
   }
 });

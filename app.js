@@ -1,5 +1,6 @@
 {
 'use strict';
+const VERSION = '3 (21/11/2026)';
 const $ = s => document.querySelector(s);
 const MOIS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
 const MOIS_L = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -316,7 +317,9 @@ async function renderJournal() {
     const zs = [...S.zones].sort((a, b) => b.date - a.date);
     h = zs.length ? zs.map(z => `<div class="card"><h3>${fmtD(z.date)} à ${fmtH(z.date)}</h3><p class="small muted">${z.kind === 'poly' ? 'Zone dessinée' : 'Cercle de ' + z.radius + ' m'}${z.cherche ? ' · cherché : ' + esc(z.cherche) : ''}</p>${z.note ? `<p>${esc(z.note)}</p>` : ''}<button class="btn sm" data-z="${z.id}">Voir sur la carte</button></div>`).join('') : `<div class="empty">Aucune zone « rien trouvé ».</div>`;
   }
+  h = `<div class="card small row" style="justify-content:space-between"><span>Sauvegarde de toutes vos données (photos comprises)</span><span class="row"><button class="btn sm pri" id="j-save">Sauvegarder</button><label class="btn sm"><input type="file" id="j-imp" class="photo-in">Restaurer</label></span></div>` + h;
   body.innerHTML = h;
+  $('#j-save').onclick = exportJSON; $('#j-imp').onchange = e => e.target.files[0] && importJSON(e.target.files[0]);
   body.querySelectorAll('img[data-ph]').forEach(async i => i.src = await photoURL(i.dataset.ph));
   const q = $('#j-q'); if (q) q.oninput = () => { jFilter = q.value; const pos = q.selectionStart; renderJournal().then(() => { const n = $('#j-q'); n.focus(); n.setSelectionRange(pos, pos); }); };
   body.querySelectorAll('[data-see]').forEach(b => b.onclick = () => { const t = S.traces.find(x => x.id === b.dataset.see); goMap(L.latLngBounds(t.points.map(p => [p[0], p[1]]))); });
@@ -420,17 +423,26 @@ function renderInfos() {
   <h2>Mes données</h2>
   <div class="card small" id="i-data"><p>Tout est stocké <b>sur ce téléphone uniquement</b>, dans le navigateur. Faites une sauvegarde régulière : si vous videz les données du navigateur, tout est perdu.</p>
     <p id="i-usage" class="muted"></p>
-    <div class="row"><button class="btn sm pri" id="x-json">Sauvegarder tout (avec photos)</button><button class="btn sm" id="x-gpx">Exporter en GPX</button><label class="btn sm"><input type="file" id="x-imp" class="photo-in" accept=".json,application/json">Restaurer une sauvegarde</label></div></div>
+    <div class="row"><button class="btn sm pri" id="x-json">Sauvegarder tout (avec photos)</button><button class="btn sm" id="x-gpx">Exporter en GPX</button><label class="btn sm"><input type="file" id="x-imp" class="photo-in" >Restaurer une sauvegarde</label></div></div>
+  <p class="small muted">Sur iPhone : « Sauvegarder tout » ouvre le menu de partage, choisir « Enregistrer dans Fichiers ». Pour restaurer, choisir le fichier .json dans Fichiers.</p>
   <h2>Installation sur le téléphone</h2>
   <div class="card small"><p>L’appli doit être ouverte depuis une adresse <b>https://</b> pour avoir accès au GPS (voir le fichier LISEZMOI). Ensuite : sur Android (Chrome), menu ⋮ puis « Ajouter à l’écran d’accueil » ; sur iPhone (Safari), bouton Partager puis « Sur l’écran d’accueil ».</p>
     <p><b>Limite à connaître :</b> une appli web ne peut pas enregistrer la trace quand l’écran est verrouillé ou l’appli en arrière-plan. Pendant une sortie, l’appli garde l’écran allumé si le téléphone le permet ; baissez la luminosité pour économiser la batterie.</p>
     <p>Hors réseau : l’appli s’ouvre, et les morceaux de carte déjà consultés restent visibles. Astuce : avant de partir, parcourez le secteur sur la carte avec du réseau.</p></div>
+  <div class="card small"><p><b>Version de l’appli : ${VERSION}</b></p><p>Si une mise à jour ne s’affiche pas, ce bouton vide le cache de l’appli et la recharge (vos données ne sont pas touchées).</p><button class="btn sm" id="x-maj">Forcer la mise à jour</button></div>
   <p class="small muted">Fonds de carte © IGN Géoplateforme, © contributeurs OpenStreetMap. Photos d’espèces : Wikipédia / Wikimedia Commons.</p>`;
   document.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { const l = LIEUX.find(x => x.id === b.dataset.l); if (!map.hasLayer(gLieux)) gLieux.addTo(map); goMap(L.latLng(l.lat, l.lng).toBounds(l.rayon * 2.2)); });
   $('#x-json').onclick = exportJSON;
+  $('#x-maj').onclick = forceUpdate;
   $('#x-gpx').onclick = () => saveFile(gpx(S.traces, S.points, S.zones), 'carnet-champignons.gpx', 'application/gpx+xml');
   $('#x-imp').onchange = e => e.target.files[0] && importJSON(e.target.files[0]);
   usage();
+}
+async function forceUpdate() {
+  try { for (const r of await navigator.serviceWorker?.getRegistrations?.() || []) await r.unregister(); } catch (e) {}
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch (e) {}
+  try { for (const k of Object.keys(localStorage)) if (k.startsWith('wi')) localStorage.removeItem(k); } catch (e) {}
+  location.reload();
 }
 async function usage() { try { if (navigator.storage?.estimate) { const e = await navigator.storage.estimate(); $('#i-usage').textContent = `${S.traces.length} sortie(s), ${S.points.length} repère(s), ${S.zones.length} zone(s) · espace utilisé : ${(e.usage / 1048576).toFixed(1).replace('.', ',')} Mo${persisted ? ' · stockage protégé' : ''}`; } } catch (x) {} }
 
