@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Carnet de cueillette</title>
+<meta name="theme-color" content="#2f4a2b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Cueillette">
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+/* VOICE: carnet de terrain, sobre et pratique, lisible en forêt
+   IDEA: le carnet du cueilleur : une carte annotée + un herbier saisonnier
+   PICTURE: la carte plein écran est l'image ; les fiches portent les photos
+   COLOUR: mousse #2f4a2b dominante, sous-bois clair, girolle #e0842a accent, rouge danger
+   TYPE: Rubik pour les titres, Source Sans 3 pour le texte ; LAYOUT: plein écran mobile, barre d'onglets en bas */
+:root{color-scheme:light dark;
+ --bg:light-dark(#f4f3ee,#11150f);--card:light-dark(#ffffff,#1b2118);--ink:light-dark(#1c2219,#e8ebe2);--mute:light-dark(#5d6656,#a3ad98);
+ --moss:light-dark(#2f4a2b,#8fb37f);--mossbg:light-dark(#2f4a2b,#24331f);--line:light-dark(#dcdcd0,#2d3628);
+ --acc:#e0842a;--danger:light-dark(#b3202a,#ff6b6b);--dangerbg:light-dark(#fbe9e8,#3a1717);--nav:64px}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Source Sans 3",system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+h1,h2,h3{font-family:Rubik,system-ui,sans-serif;line-height:1.1;margin:0 0 .4em;text-wrap:balance}
+h1{font-size:28px}h2{font-size:21px}h3{font-size:17px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.view{position:fixed;inset:0 0 calc(var(--nav) + env(safe-area-inset-bottom)) 0;display:none;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.view.on{display:block}
+.pad{padding:calc(16px + env(safe-area-inset-top)) 16px 32px;max-width:860px;margin:0 auto}
+/* nav */
+.tabs{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(4,1fr);background:var(--mossbg);z-index:1000}
+.tabs button{border:0;background:none;color:#cfdcc6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:13px}
+.tabs button svg{width:24px;height:24px}
+.tabs button.on{color:#fff}.tabs button.on svg{color:var(--acc)}
+/* map */
+#v-carte{bottom:calc(var(--nav) + env(safe-area-inset-bottom))}
+#map{position:absolute;inset:0;background:#dfe3d6}
+.maptop{position:absolute;top:calc(10px + env(safe-area-inset-top));left:10px;right:60px;z-index:500;display:flex;gap:8px;flex-wrap:wrap;pointer-events:none}
+.pill{pointer-events:auto;background:var(--card);border-radius:22px;padding:8px 14px;box-shadow:0 2px 10px #0003;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.pill.rec{background:#b3202a;color:#fff}
+.dot{width:10px;height:10px;border-radius:50%;background:#fff;animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.25}}
+.fabs{position:absolute;right:10px;bottom:96px;z-index:500;display:flex;flex-direction:column;gap:10px}
+.fab{width:48px;height:48px;border-radius:50%;border:0;background:var(--card);box-shadow:0 2px 10px #0003;display:grid;place-items:center}
+.fab svg{width:24px;height:24px}.fab.on{background:var(--moss);color:#fff}
+.mapbar{position:absolute;left:8px;right:8px;bottom:10px;z-index:500;display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:6px}
+.mbtn{border:0;border-radius:14px;min-height:56px;padding:6px 4px;background:var(--card);box-shadow:0 2px 10px #0003;font-weight:600;font-size:13px;line-height:1.15;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+.mbtn svg{width:22px;height:22px}
+.mbtn.go{background:var(--moss);color:#fff}.mbtn.stop{background:#b3202a;color:#fff}
+.drawbar{position:absolute;left:8px;right:8px;bottom:10px;z-index:600;background:var(--card);border-radius:14px;box-shadow:0 2px 10px #0004;padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.drawbar p{margin:0;flex:1 1 180px;font-size:15px}
+.drawing .leaflet-interactive{pointer-events:none!important}
+.leaflet-control-layers{border-radius:12px!important}
+.leaflet-top{top:env(safe-area-inset-top)}
+.mk{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);display:grid;place-items:center;border:2px solid #fff;box-shadow:0 2px 6px #0006}
+.mk svg{transform:rotate(45deg);width:16px;height:16px;color:#fff}
+.me{width:18px;height:18px;border-radius:50%;background:#1f73e8;border:3px solid #fff;box-shadow:0 0 0 2px #1f73e866}
+.leaflet-popup-content{margin:12px 14px;font:15px/1.4 "Source Sans 3",system-ui,sans-serif;min-width:180px}
+.pop h3{margin:0 0 4px}.pop .meta{color:#666;font-size:13px}
+.pop .ph{display:flex;gap:6px;margin:8px 0;overflow-x:auto}.pop .ph img{width:76px;height:76px;object-fit:cover;border-radius:8px}
+.pop .act{display:flex;gap:6px;margin-top:8px}
+/* generic */
+.btn{border:1px solid var(--line);background:var(--card);border-radius:12px;min-height:44px;padding:8px 14px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.btn.pri{background:var(--moss);border-color:var(--moss);color:light-dark(#fff,#11150f)}
+.btn.warn{color:var(--danger)}
+.btn.sm{min-height:36px;padding:4px 10px;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.seg{display:flex;background:light-dark(#e6e6dc,#232b1f);border-radius:12px;padding:3px;gap:3px;margin:0 0 14px}
+.seg button{flex:1;border:0;background:none;border-radius:10px;min-height:40px;font-weight:600;color:var(--mute)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px #0002}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin:0 -16px 12px;padding-inline:16px;scrollbar-width:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);border-radius:20px;padding:6px 12px;font-weight:600;font-size:14px}
+.chip.on{background:var(--moss);color:light-dark(#fff,#11150f);border-color:var(--moss)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.muted{color:var(--mute)}.small{font-size:14px}
+.empty{text-align:center;color:var(--mute);padding:40px 10px}
+/* species */
+.sp{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px;padding:0;overflow:hidden}
+.sp .img{background:light-dark(#e9e8df,#232b1f);min-height:140px;position:relative}
+.sp .img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.sp .img a{position:absolute;left:4px;bottom:4px;font-size:11px;background:#000a;color:#fff;padding:1px 5px;border-radius:6px;text-decoration:none}
+.sp .txt{padding:12px 12px 12px 0}
+.sp .lat{font-style:italic;color:var(--mute);font-size:14px;margin:-4px 0 6px}
+.sp ul{margin:6px 0;padding-left:18px}.sp li{margin:2px 0}
+.months{display:grid;grid-template-columns:repeat(12,1fr);gap:2px;margin:6px 0}
+.months span{font-size:10px;text-align:center;padding:2px 0;border-radius:4px;background:light-dark(#ecebe3,#262e22);color:var(--mute)}
+.months span.in{background:var(--moss);color:light-dark(#fff,#11150f)}.months span.now{outline:2px solid var(--acc)}
+.danger .months span.in{background:var(--danger)}
+.conf{background:var(--dangerbg);border-radius:10px;padding:8px 10px;font-size:14px;margin-top:6px}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:10px;background:light-dark(#e6efe1,#2a3a24);color:var(--moss);margin-right:4px}
+.badge.mortel{background:var(--danger);color:#fff}.badge.grave{background:#d9611c;color:#fff}.badge.toxique{background:#c9a400;color:#1c1c1c}
+.alert{background:var(--dangerbg);border-left:4px solid var(--danger);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.alert a{color:var(--danger);font-weight:700}
+/* journal */
+.tr{display:flex;gap:12px;align-items:flex-start}
+.tr .big{font-family:Rubik;font-size:24px;line-height:1;color:var(--moss);min-width:56px;text-align:center}
+.tr .big small{display:block;font-size:12px;color:var(--mute);font-family:"Source Sans 3"}
+.stats{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--mute);margin:4px 0 8px}.stats b{color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.fi{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer;text-align:left;padding:0}
+.fi .th{aspect-ratio:1;background:light-dark(#ecebe3,#262e22);display:grid;place-items:center;color:var(--mute)}
+.fi .th img{width:100%;height:100%;object-fit:cover}
+.fi div.t{padding:8px 10px;font-size:14px}
+input[type=search],input[type=text],input[type=datetime-local],select,textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:10px;min-height:44px;padding:8px 10px;font-size:16px}
+textarea{min-height:70px}
+label.f{display:block;font-weight:600;font-size:14px;margin:0 0 12px}label.f>*{margin-top:4px;font-weight:400}
+/* sheet */
+.sheet{position:fixed;inset:0;z-index:2000;background:#0007;display:flex;align-items:flex-end;justify-content:center}
+.sheet[hidden]{display:none}
+.sheet-card{background:var(--bg);width:100%;max-width:640px;max-height:92dvh;overflow-y:auto;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.thumbs div{position:relative}.thumbs img{width:72px;height:72px;object-fit:cover;border-radius:10px}
+.thumbs button{position:absolute;top:-6px;right:-6px;width:26px;height:26px;border-radius:50%;border:0;background:#b3202a;color:#fff;font-weight:700}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav) + 80px + env(safe-area-inset-bottom));background:#1c2219;color:#fff;padding:10px 16px;border-radius:12px;z-index:3000;max-width:90vw;font-size:15px;opacity:0;transition:opacity .25s;pointer-events:none}
+.toast.on{opacity:1}
+details{margin-bottom:10px}summary{font-weight:600;cursor:pointer;min-height:36px;display:flex;align-items:center}
+a{color:var(--moss)}
+.photo-in{display:none}
+@media(min-width:700px){.sp{grid-template-columns:200px minmax(0,1fr)}.mapbar{left:auto;width:520px}}
+@media(prefers-reduced-motion:reduce){.dot{animation:none}}
+</style>
+</head>
+<body>
+<section id="v-carte" class="view on" aria-label="Carte">
+  <div id="map"></div>
+  <div class="maptop"><div id="recpill" class="pill rec" hidden><span class="dot"></span><span id="rectxt">00:00 · 0 m</span></div><div id="gpspill" class="pill" hidden></div></div>
+  <div class="fabs">
+    <button class="fab" id="b-loc" aria-label="Me localiser"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+  </div>
+  <div class="mapbar" id="mapbar">
+    <button class="mbtn go" id="b-rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19c3-1 4-5 7-6s5 2 9-3"/><circle cx="4" cy="19" r="2" fill="currentColor"/></svg><span>Démarrer la sortie</span></button>
+    <button class="mbtn" id="b-find"><svg viewBox="0 0 24 24" fill="none" stroke="#e0842a" stroke-width="2"><path d="M3 12a9 7 0 0 1 18 0z" fill="#e0842a33"/><path d="M10 12v6a2 2 0 0 0 4 0v-6"/></svg><span>J’ai trouvé</span></button>
+    <button class="mbtn" id="b-none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8" stroke-dasharray="3 3"/><path d="M8 16 16 8"/></svg><span>Rien ici</span></button>
+    <button class="mbtn" id="b-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#1f73e8" stroke-width="2"><path d="M6 21V4h11l-2 4 2 4H6"/></svg><span>Signet</span></button>
+  </div>
+  <div class="drawbar" id="drawbar" hidden><p id="drawtxt">Touchez la carte pour poser les coins de la zone.</p><button class="btn sm" id="d-undo">Retour</button><button class="btn sm" id="d-cancel">Annuler</button><button class="btn sm pri" id="d-ok">Terminer</button></div>
+</section>
+
+<section id="v-journal" class="view" aria-label="Journal"><div class="pad">
+  <h1>Journal</h1>
+  <div class="seg" id="j-seg"><button data-k="sorties" class="on">Sorties</button><button data-k="trouv">Trouvailles</button><button data-k="vides">Zones vides</button></div>
+  <div id="j-body"></div>
+</div></section>
+
+<section id="v-saison" class="view" aria-label="Saison"><div class="pad">
+  <h1>Que chercher en <span id="s-mois">…</span> ?</h1>
+  <div class="chips" id="s-chips"></div>
+  <div class="seg" id="s-seg"><button data-k="bons" class="on">Comestibles</button><button data-k="danger">À ne surtout pas toucher</button></div>
+  <div class="alert"><b>Aucune fiche ne remplace un contrôle.</b> Faites vérifier chaque récolte par un pharmacien ou une association mycologique avant de la manger. Ne vous fiez pas aux applis d’identification par photo. Intoxication : centre antipoison de Marseille <a href="tel:0491752525">04 91 75 25 25</a>, urgence vitale <a href="tel:15">15</a> ou <a href="tel:112">112</a>.</div>
+  <div id="s-body"></div>
+</div></section>
+
+<section id="v-infos" class="view" aria-label="Infos"><div class="pad" id="i-body"></div></section>
+
+<nav class="tabs" id="tabs">
+  <button data-v="carte" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></svg>Carte</button>
+  <button data-v="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h12a2 2 0 0 1 2 2v16H7a2 2 0 0 1-2-2z"/><path d="M9 8h6M9 12h6"/></svg>Journal</button>
+  <button data-v="saison"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 7 0 0 1 18 0z"/><path d="M10 12v7a2 2 0 0 0 4 0v-7"/></svg>Saison</button>
+  <button data-v="infos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"/></svg>Lieux &amp; infos</button>
+</nav>
+
+<div class="sheet" id="sheet" hidden><div class="sheet-card" id="sheet-body"></div></div>
+<div class="toast" id="toast"></div>
+<datalist id="dl-esp"></datalist>
+
+<script src="leaflet/leaflet.js"></script>
+<script src="especes.js"></script>
+<script src="lieux.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
